@@ -3,9 +3,14 @@
 # intended to be user-facing. They should accept the parameters sketched here,
 # but may also accpet additional required or optional keyword arguments, as
 # needed.
-import event_model
+from collections import OrderedDict
 from pathlib import Path
+
+import toml
+
+import event_model
 import suitcase.utils
+
 from ._version import get_versions
 
 __version__ = get_versions()['version']
@@ -115,7 +120,7 @@ class Serializer(event_model.DocumentRouter):
         the user.
 
     **kwargs : kwargs
-        Keyword arugments to be passed through to the underlying I/O library.
+        Keyword arguments to be passed through to the underlying I/O library.
 
     Attributes
     ----------
@@ -128,6 +133,21 @@ class Serializer(event_model.DocumentRouter):
         self._file_prefix = file_prefix
         self._kwargs = kwargs
         self._templated_file_prefix = ''  # set when we get a 'start' document
+        self._event_descriptor_uid = None
+        self._file_template = toml.load('XDI.toml', _dict=OrderedDict)
+
+        # TODO: sort this list?
+        self.columns = tuple(
+            [
+                v
+                for k, v
+                in self._file_template['columns'].items()
+            ]
+        )
+        if len(self.columns) == 0:
+            raise ValueError('found no Columns')
+
+        self.export_data_keys = tuple([c['data_key'] for c in self.columns])
 
         if isinstance(directory, (str, Path)):
             # The user has given us a filepath; they want files.
@@ -146,6 +166,7 @@ class Serializer(event_model.DocumentRouter):
         # For a Serializer that writes a separate file per stream:
         #
         # self._files = {}
+        self._output_file = None
 
     @property
     def artifacts(self):
@@ -204,24 +225,79 @@ class Serializer(event_model.DocumentRouter):
     #
     #   or
     #
-    #   my_function(doc, file)
-
+    #   my_function(doc, fil
     def start(self, doc):
         # Fill in the file_prefix with the contents of the RunStart document.
         # As in, '{uid}' -> 'c1790369-e4b2-46c7-a294-7abfa239691a'
         # or 'my-data-from-{plan-name}' -> 'my-data-from-scan'
         self._templated_file_prefix = self._file_prefix.format(**doc)
-        ...
+        # TODO: '-primary' is probably not right
+        filename = f'{self._templated_file_prefix}-primary.xdi'
+        self._output_file = self._manager.open('stream_data', filename, 'xt')
+
+        for k, v in self._file_template['versions'].items():
+            self._output_file.write(v)
+            self._output_file.write('\n')
+
+        for xdi_key, xdi_value in self._file_template['columns'].items():
+            print(xdi_key)
+            print(xdi_value)
+            self._output_file.write('# {} = {}'.format(xdi_key, xdi_value['template'].format(**doc)))
+            if 'units' in xdi_value:
+                self._output_file.write(' {units}\n'.format(**xdi_value))
+            else:
+                self._output_file.write('\n')
+
+        for xdi_key, xdi_value in self._file_template['required_headers'].items():
+            print(xdi_key)
+            print(xdi_value)
+            self._output_file.write('# {} = {}\n'.format(xdi_key, xdi_value['template'].format(**doc)))
+
+        for xdi_key, xdi_value in self._file_template['optional_headers'].items():
+            print(xdi_key)
+            print(xdi_value)
+            self._output_file.write('# {} = {}\n'.format(xdi_key, xdi_value['template'].format(**doc)))
 
     def descriptor(self, doc):
-        ...
+        """
+        It is possible to see more than one descriptor. Assume there is only one with the data to be exported.
+
+        Parameters
+        ----------
+        doc : dict
+            an event-descriptor document
+        """
+        descriptor_data_keys = doc['data_keys']
+        if set(self.export_data_keys).issubset(descriptor_data_keys.keys()):
+            self._event_descriptor_uid = doc['uid']
+            self._output_file.write('#----\n')
+            header_list = [
+                c['template'].format(**doc)
+                for c
+                in self.columns
+            ]
+            self._output_file.write('# {}\n'.format('\t'.join(header_list)))
+        else:
+            ...
 
     def event_page(self, doc):
         # There are other representations of Event data -- 'event' and
         # 'bulk_events' (deprecated). But that does not concern us because
-        # DocumentRouter will convert this representations to 'event_page'
+        # DocumentRouter will convert these representations to 'event_page'
         # then route them through here.
-        ...
+
+        if self._event_descriptor_uid is None:
+            raise ValueError(f'no event descriptor with data keys {self.export_data_keys} has been published')
+        elif doc['descriptor'] != self._event_descriptor_uid:
+            print(f'wrong descriptor uid {self._event_descriptor_uid}')
+        else:
+            column_list = [
+                column['column_template'].format(**doc)
+                for column
+                in self.columns
+            ]
+            self._output_file.write('\t'.join(column_list))
+            self._output_file.write('\n')
 
     def stop(self, doc):
         ...
