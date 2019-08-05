@@ -19,46 +19,50 @@ This may be due to an out-of-date pip. Make sure you have pip >= 9.0.1.
 Upgrade pip like so:
 
 pip install --upgrade pip
-""".format(*(sys.version_info[:2] + min_version))
+""".format(
+        *(sys.version_info[:2] + min_version)
+    )
     sys.exit(error)
 
 here = path.abspath(path.dirname(__file__))
 
-with open(path.join(here, 'README.md'), encoding='utf-8') as readme_file:
+with open(path.join(here, "README.md"), encoding="utf-8") as readme_file:
     readme = readme_file.read()
 
-with open(path.join(here, 'requirements.txt')) as requirements_file:
+with open(path.join(here, "requirements.txt")) as requirements_file:
     # Parse requirements.txt, ignoring any commented-out lines.
-    requirements = [line for line in requirements_file.read().splitlines()
-                    if not line.startswith('#')]
+    requirements = [
+        line
+        for line in requirements_file.read().splitlines()
+        if not line.startswith("#")
+    ]
 
 
 setup(
-    name='suitcase-xdi',
+    name="suitcase-xdi",
     version=versioneer.get_version(),
     cmdclass=versioneer.get_cmdclass(),
     long_description=readme,
-    packages=['suitcase.xdi',
-              'suitcase.xdi.tests'],
+    packages=["suitcase.xdi", "suitcase.xdi.tests"],
     entry_points={
-        'console_scripts': [
+        "console_scripts": [
             # 'some.module:some_function',
-            ],
-        },
+        ]
+    },
     include_package_data=True,
-    python_requires='>={}'.format('.'.join(str(n) for n in min_version)),
+    python_requires=">={}".format(".".join(str(n) for n in min_version)),
     package_data={
-        'suitcase.xdi': [
+        "suitcase.xdi": [
             # When adding files here, remember to update MANIFEST.in as well,
             # or else they will not be included in the distribution on PyPI!
             # 'path/to/data_file',
-            ]
-        },
+        ]
+    },
     install_requires=requirements,
     license="BSD (3-clause)",
     classifiers=[
-        'Development Status :: 2 - Pre-Alpha',
-        'Natural Language :: English',
-        'Programming Language :: Python :: 3.6',
+        "Development Status :: 2 - Pre-Alpha",
+        "Natural Language :: English",
+        "Programming Language :: Python :: 3.6",
     ],
 )

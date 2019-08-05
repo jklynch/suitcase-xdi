@@ -13,11 +13,11 @@ import suitcase.utils
 
 from ._version import get_versions
 
-__version__ = get_versions()['version']
+__version__ = get_versions()["version"]
 del get_versions
 
 
-def export(gen, directory, file_prefix='{uid}-', **kwargs):
+def export(gen, directory, file_prefix="{uid}-", **kwargs):
     """
     Export a stream of documents to xdi.
 
@@ -128,26 +128,16 @@ class Serializer(event_model.DocumentRouter):
         dict mapping the 'labels' to lists of file names (or, in general,
         whatever resources are produced by the Manager)
     """
-    def __init__(self, directory, file_prefix='{uid}-', **kwargs):
+
+    def __init__(self, directory, file_prefix="{uid}-", **kwargs):
 
         self._file_prefix = file_prefix
         self._kwargs = kwargs
-        self._templated_file_prefix = ''  # set when we get a 'start' document
+        self._templated_file_prefix = ""  # set when we get a 'start' document
         self._event_descriptor_uid = None
-        self._file_template = toml.load('XDI.toml', _dict=OrderedDict)
-
-        # TODO: sort this list?
-        self.columns = tuple(
-            [
-                v
-                for k, v
-                in self._file_template['columns'].items()
-            ]
-        )
-        if len(self.columns) == 0:
-            raise ValueError('found no Columns')
-
-        self.export_data_keys = tuple([c['data_key'] for c in self.columns])
+        self._file_template = None
+        self.columns = None
+        self.export_data_keys = None
 
         if isinstance(directory, (str, Path)):
             # The user has given us a filepath; they want files.
@@ -227,36 +217,56 @@ class Serializer(event_model.DocumentRouter):
     #
     #   my_function(doc, fil
     def start(self, doc):
+        if self._file_template is not None:
+            raise Exception()
+
+        self._file_template = toml.load(
+            doc["md"]["XDI"]["config-file-path"], _dict=OrderedDict
+        )
+
         # Fill in the file_prefix with the contents of the RunStart document.
         # As in, '{uid}' -> 'c1790369-e4b2-46c7-a294-7abfa239691a'
         # or 'my-data-from-{plan-name}' -> 'my-data-from-scan'
         self._templated_file_prefix = self._file_prefix.format(**doc)
         # TODO: '-primary' is probably not right
-        filename = f'{self._templated_file_prefix}-primary.xdi'
-        self._output_file = self._manager.open('stream_data', filename, 'xt')
+        filename = f"{self._templated_file_prefix}-primary.xdi"
+        self._output_file = self._manager.open("stream_data", filename, "xt")
 
-        for k, v in self._file_template['versions'].items():
+        # TODO: sort this list?
+        self.columns = tuple([v for k, v in self._file_template["columns"].items()])
+        if len(self.columns) == 0:
+            raise ValueError("found no Columns")
+
+        self.export_data_keys = tuple({c["data_key"] for c in self.columns})
+
+        for k, v in self._file_template["versions"].items():
             self._output_file.write(v)
-            self._output_file.write('\n')
+            self._output_file.write("\n")
 
-        for xdi_key, xdi_value in self._file_template['columns'].items():
+        for xdi_key, xdi_value in self._file_template["columns"].items():
             print(xdi_key)
             print(xdi_value)
-            self._output_file.write('# {} = {}'.format(xdi_key, xdi_value['template'].format(**doc)))
-            if 'units' in xdi_value:
-                self._output_file.write(' {units}\n'.format(**xdi_value))
+            self._output_file.write(
+                "# {} = {}".format(xdi_key, xdi_value["template"].format(**doc))
+            )
+            if "units" in xdi_value:
+                self._output_file.write(" {units}\n".format(**xdi_value))
             else:
-                self._output_file.write('\n')
+                self._output_file.write("\n")
 
-        for xdi_key, xdi_value in self._file_template['required_headers'].items():
+        for xdi_key, xdi_value in self._file_template["required_headers"].items():
             print(xdi_key)
             print(xdi_value)
-            self._output_file.write('# {} = {}\n'.format(xdi_key, xdi_value['template'].format(**doc)))
+            self._output_file.write(
+                "# {} = {}\n".format(xdi_key, xdi_value["template"].format(**doc))
+            )
 
-        for xdi_key, xdi_value in self._file_template['optional_headers'].items():
+        for xdi_key, xdi_value in self._file_template["optional_headers"].items():
             print(xdi_key)
             print(xdi_value)
-            self._output_file.write('# {} = {}\n'.format(xdi_key, xdi_value['template'].format(**doc)))
+            self._output_file.write(
+                "# {} = {}\n".format(xdi_key, xdi_value["template"].format(**doc))
+            )
 
     def descriptor(self, doc):
         """
@@ -267,16 +277,12 @@ class Serializer(event_model.DocumentRouter):
         doc : dict
             an event-descriptor document
         """
-        descriptor_data_keys = doc['data_keys']
+        descriptor_data_keys = doc["data_keys"]
         if set(self.export_data_keys).issubset(descriptor_data_keys.keys()):
-            self._event_descriptor_uid = doc['uid']
-            self._output_file.write('#----\n')
-            header_list = [
-                c['template'].format(**doc)
-                for c
-                in self.columns
-            ]
-            self._output_file.write('# {}\n'.format('\t'.join(header_list)))
+            self._event_descriptor_uid = doc["uid"]
+            self._output_file.write("#----\n")
+            header_list = [c["template"].format(**doc) for c in self.columns]
+            self._output_file.write("# {}\n".format("\t".join(header_list)))
         else:
             ...
 
@@ -287,17 +293,17 @@ class Serializer(event_model.DocumentRouter):
         # then route them through here.
 
         if self._event_descriptor_uid is None:
-            raise ValueError(f'no event descriptor with data keys {self.export_data_keys} has been published')
-        elif doc['descriptor'] != self._event_descriptor_uid:
-            print(f'wrong descriptor uid {self._event_descriptor_uid}')
+            raise ValueError(
+                f"no event descriptor with data keys {self.export_data_keys} has been published"
+            )
+        elif doc["descriptor"] != self._event_descriptor_uid:
+            print(f"wrong descriptor uid {self._event_descriptor_uid}")
         else:
             column_list = [
-                column['column_template'].format(**doc)
-                for column
-                in self.columns
+                column["column_template"].format(**doc) for column in self.columns
             ]
-            self._output_file.write('\t'.join(column_list))
-            self._output_file.write('\n')
+            self._output_file.write("\t".join(column_list))
+            self._output_file.write("\n")
 
     def stop(self, doc):
         ...
