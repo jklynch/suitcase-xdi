@@ -2,9 +2,10 @@ from pprint import pprint
 
 from bluesky import RunEngine
 from bluesky.plans import count
+from bluesky.preprocessors import SupplementalData
 from event_model import RunRouter
 from suitcase.xdi import Serializer
-from ophyd.sim import det1, det2
+from ophyd.sim import det1, det2, det3, motor1, motor2
 
 
 def pretty_print(name, doc):
@@ -19,6 +20,11 @@ def serializer_factory(name, start_doc):
 
 
 RE = RunEngine({})
+
+sd = SupplementalData()
+RE.preprocessors.append(sd)
+sd.baseline = [det3, motor1, motor2]
+
 RE.subscribe(pretty_print)
 RE.subscribe(RunRouter([serializer_factory]))
 
