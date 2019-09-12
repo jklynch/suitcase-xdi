@@ -2,18 +2,18 @@
 "XDI"                         = "# XDI/1.0 Bluesky"
 
 [columns]
-"Column.1"                    = {template="energy",  data_key="det1", column_template="{data[det1][0]}", units="eV"}
-"Column.2"                    = {template="mutrans", data_key="det2", column_template="{data[det2][0]:.3}"}
-"Column.3"                    = {template="i0",      data_key="det2", column_template="{data[det2][0]:.5}"}
+"Column.1"                    = {column_label="energy",  data_key="det1", column_data="{data[det1][0]}", units="eV"}
+"Column.2"                    = {column_label="mutrans", data_key="det2", column_data="{data[det2][0]:.3}"}
+"Column.3"                    = {column_label="i0",      data_key="det2", column_data="{data[det2][0]:.5}"}
 
 [required_headers]
-"Element.symbol"              = {template="{md[XDI][element_symbol]}"}
-"Element.edge"                = {template="{md[XDI][element_edge]}"}
-"Mono.d_spacing"              = {template="{md[XDI][mono_d_spacing]}"}
+"Element.symbol"              = {data="{md[XDI][element_symbol]}"}
+"Element.edge"                = {data="{md[XDI][element_edge]}"}
+"Mono.d_spacing"              = {data="{md[XDI][mono_d_spacing]}"}
 
 [optional_headers]
-"Facility.name"               = {template="{md[NX][Source][name]}" }
-"Beamline.name"               = {template="{md[NX][Instrument][name]}" }
-"Beamline.focusing"           = {template="parabolic mirror", type="string", units="none", use=true}
-"Beamline.harmonic_rejection" = {template="detuned", type="string", units="none", use=true}
-"Beamline.energy"             = {template="{md[NX][Beam][incident_energy]:.3f} eV", units="eV", use=false, precision=1}
+"Facility.name"               = {data="{md[NX][Source][name]}" }
+"Beamline.name"               = {data="{md[NX][Instrument][name]}" }
+"Beamline.focusing"           = {data="parabolic mirror", type="string", units="none", use=true}
+"Beamline.harmonic_rejection" = {data="detuned", type="string", units="none", use=true}
+"Beamline.energy"             = {data="{md[NX][Beam][incident_energy]:.3f} eV", units="eV", use=false, precision=1}
