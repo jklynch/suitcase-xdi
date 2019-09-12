@@ -5,6 +5,7 @@
 # needed.
 from collections import OrderedDict
 from pathlib import Path
+from pprint import pprint
 
 import toml
 
@@ -218,7 +219,7 @@ class Serializer(event_model.DocumentRouter):
     #   my_function(doc, fil
     def start(self, doc):
         if self._file_template is not None:
-            raise Exception()
+            raise Exception("")
 
         self._file_template = toml.load(
             doc["md"]["suitcase-xdi"]["config-file-path"], _dict=OrderedDict
@@ -232,7 +233,7 @@ class Serializer(event_model.DocumentRouter):
         filename = f"{self._templated_file_prefix}-primary.xdi"
         self._output_file = self._manager.open("stream_data", filename, "xt")
 
-        # TODO: sort this list?
+        # TODO: sort the list of columns?
         self.columns = tuple([v for k, v in self._file_template["columns"].items()])
         if len(self.columns) == 0:
             raise ValueError("found no Columns")
@@ -244,10 +245,10 @@ class Serializer(event_model.DocumentRouter):
             self._output_file.write("\n")
 
         for xdi_key, xdi_value in self._file_template["columns"].items():
-            print(xdi_key)
-            print(xdi_value)
+            pprint(xdi_key)
+            pprint(xdi_value)
             self._output_file.write(
-                "# {} = {}".format(xdi_key, xdi_value["template"].format(**doc))
+                "# {} = {}".format(xdi_key, xdi_value["column_label"].format(**doc))
             )
             if "units" in xdi_value:
                 self._output_file.write(" {units}\n".format(**xdi_value))
@@ -255,17 +256,17 @@ class Serializer(event_model.DocumentRouter):
                 self._output_file.write("\n")
 
         for xdi_key, xdi_value in self._file_template["required_headers"].items():
-            print(xdi_key)
-            print(xdi_value)
+            pprint(xdi_key)
+            pprint(xdi_value)
             self._output_file.write(
-                "# {} = {}\n".format(xdi_key, xdi_value["template"].format(**doc))
+                "# {} = {}\n".format(xdi_key, xdi_value["data"].format(**doc))
             )
 
         for xdi_key, xdi_value in self._file_template["optional_headers"].items():
-            print(xdi_key)
-            print(xdi_value)
+            pprint(xdi_key)
+            pprint(xdi_value)
             self._output_file.write(
-                "# {} = {}\n".format(xdi_key, xdi_value["template"].format(**doc))
+                "# {} = {}\n".format(xdi_key, xdi_value["data"].format(**doc))
             )
 
     def descriptor(self, doc):
@@ -281,7 +282,7 @@ class Serializer(event_model.DocumentRouter):
         if set(self.export_data_keys).issubset(descriptor_data_keys.keys()):
             self._event_descriptor_uid = doc["uid"]
             self._output_file.write("#----\n")
-            header_list = [c["template"].format(**doc) for c in self.columns]
+            header_list = [c["column_label"].format(**doc) for c in self.columns]
             self._output_file.write("# {}\n".format("\t".join(header_list)))
         else:
             ...
@@ -300,10 +301,10 @@ class Serializer(event_model.DocumentRouter):
             print(f"wrong descriptor uid {self._event_descriptor_uid}")
         else:
             column_list = [
-                column["column_template"].format(**doc) for column in self.columns
+                column["column_data"].format(**doc) for column in self.columns
             ]
             self._output_file.write("\t".join(column_list))
             self._output_file.write("\n")
 
     def stop(self, doc):
-        ...
+        self._file_template = None
