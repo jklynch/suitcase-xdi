@@ -229,8 +229,7 @@ class Serializer(event_model.DocumentRouter):
         # As in, '{uid}' -> 'c1790369-e4b2-46c7-a294-7abfa239691a'
         # or 'my-data-from-{plan-name}' -> 'my-data-from-scan'
         self._templated_file_prefix = self._file_prefix.format(**doc)
-        # TODO: '-primary' is probably not right
-        filename = f"{self._templated_file_prefix}-primary.xdi"
+        filename = f"{self._templated_file_prefix}.xdi"
         self._output_file = self._manager.open("stream_data", filename, "xt")
 
         # TODO: sort the list of columns?
@@ -298,9 +297,6 @@ class Serializer(event_model.DocumentRouter):
             print(
                 "have not seen a descriptor with data keys {self.export_data_keys} yet"
             )
-            # raise ValueError(
-            #    f"no event descriptor with data keys {self.export_data_keys} has been published"
-            # )
         elif doc["descriptor"] in self._event_descriptor_uids:
             column_list = [
                 column["column_data"].format(**doc) for column in self.columns
