@@ -221,7 +221,7 @@ class Serializer(event_model.DocumentRouter):
             raise Exception()
 
         self._file_template = toml.load(
-            doc["md"]["XDI"]["config-file-path"], _dict=OrderedDict
+            doc["md"]["suitcase-xdi"]["config-file-path"], _dict=OrderedDict
         )
 
         # Fill in the file_prefix with the contents of the RunStart document.
