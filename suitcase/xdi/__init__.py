@@ -135,7 +135,7 @@ class Serializer(event_model.DocumentRouter):
         self._file_prefix = file_prefix
         self._kwargs = kwargs
         self._templated_file_prefix = ""  # set when we get a 'start' document
-        self._event_descriptor_uid = None
+        self._event_descriptor_uids = set()
         self._file_template = None
         self.columns = None
         self.export_data_keys = None
@@ -271,7 +271,8 @@ class Serializer(event_model.DocumentRouter):
 
     def descriptor(self, doc):
         """
-        It is possible to see more than one descriptor. Assume there is only one with the data to be exported.
+        It is possible to see more than one descriptor. Keep a list of all descriptors with the data
+        to be exported.
 
         Parameters
         ----------
@@ -280,7 +281,7 @@ class Serializer(event_model.DocumentRouter):
         """
         descriptor_data_keys = doc["data_keys"]
         if set(self.export_data_keys).issubset(descriptor_data_keys.keys()):
-            self._event_descriptor_uid = doc["uid"]
+            self._event_descriptor_uids.add(doc["uid"])
             self._output_file.write("#----\n")
             header_list = [c["column_label"].format(**doc) for c in self.columns]
             self._output_file.write("# {}\n".format("\t".join(header_list)))
@@ -293,18 +294,21 @@ class Serializer(event_model.DocumentRouter):
         # DocumentRouter will convert these representations to 'event_page'
         # then route them through here.
 
-        if self._event_descriptor_uid is None:
-            raise ValueError(
-                f"no event descriptor with data keys {self.export_data_keys} has been published"
+        if len(self._event_descriptor_uids) == 0:
+            print(
+                "have not seen a descriptor with data keys {self.export_data_keys} yet"
             )
-        elif doc["descriptor"] != self._event_descriptor_uid:
-            print(f"wrong descriptor uid {self._event_descriptor_uid}")
-        else:
+            # raise ValueError(
+            #    f"no event descriptor with data keys {self.export_data_keys} has been published"
+            # )
+        elif doc["descriptor"] in self._event_descriptor_uids:
             column_list = [
                 column["column_data"].format(**doc) for column in self.columns
             ]
             self._output_file.write("\t".join(column_list))
             self._output_file.write("\n")
+        else:
+            print(f"this event has no data to export")
 
     def stop(self, doc):
         self._file_template = None
