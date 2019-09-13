@@ -12,9 +12,9 @@ config = """
 "Column.3"                    = {column_label="i0",      data_key="det", column_data="{data[det][0]:.5}"}
 
 [required_headers]
-"Element.symbol"              = {data="{md[XDI][element_symbol]}"}
-"Element.edge"                = {data="{md[XDI][element_edge]}"}
-"Mono.d_spacing"              = {data="{md[XDI][mono_d_spacing]}"}
+"Element.symbol"              = {data="{md[XDI][Element_symbol]}"}
+"Element.edge"                = {data="{md[XDI][Element_edge]}"}
+"Mono.d_spacing"              = {data="{md[XDI][Mono_d_spacing]}"}
 
 [optional_headers]
 "Facility.name"               = {data="{md[NX][Source][name]}" }
@@ -22,6 +22,8 @@ config = """
 "Beamline.focusing"           = {data="parabolic mirror", use=true}
 "Beamline.harmonic_rejection" = {data="detuned", use=true}
 "Beamline.energy"             = {data="{md[NX][Beam][incident_energy]:.3f} eV", units="eV"}
+"Scan.start_time"             = {}
+"Scan.end_time"               = {}
 """
 
 
@@ -38,7 +40,7 @@ def test_export(tmp_path, example_data):
         skip_tests_with=["direct_img", "direct_img_list"],
         md={
             "suitcase-xdi": {"config-file-path": str(config_file_path)},
-            "XDI": {"element_symbol": "A", "element_edge": "K", "mono_d_spacing": 10.0},
+            "XDI": {"Element_symbol": "A", "Element_edge": "K", "Mono_d_spacing": 10.0},
             "NX": {
                 "Source": {"name": "NSLS-II"},
                 "Instrument": {"name": "BMM"},
