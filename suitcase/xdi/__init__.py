@@ -4,6 +4,7 @@
 # but may also accpet additional required or optional keyword arguments, as
 # needed.
 from collections import OrderedDict
+from datetime import datetime
 from pathlib import Path
 from pprint import pprint
 
@@ -264,9 +265,18 @@ class Serializer(event_model.DocumentRouter):
         for xdi_key, xdi_value in self._file_template["optional_headers"].items():
             pprint(xdi_key)
             pprint(xdi_value)
-            self._output_file.write(
-                "# {} = {}\n".format(xdi_key, xdi_value["data"].format(**doc))
-            )
+            if xdi_key == "Scan.start_time":
+                self._output_file.write(
+                    "# {} = {}\n".format(
+                        xdi_key, datetime.fromtimestamp(doc["time"]).isoformat()
+                    )
+                )
+            elif xdi_key == "Scan.end_time":
+                self._output_file.write("# {} = \n".format(xdi_key))
+            else:
+                self._output_file.write(
+                    "# {} = {}\n".format(xdi_key, xdi_value["data"].format(**doc))
+                )
 
     def descriptor(self, doc):
         """
@@ -307,4 +317,24 @@ class Serializer(event_model.DocumentRouter):
             print(f"this event has no data to export")
 
     def stop(self, doc):
-        self._file_template = None
+        self._manager.close()
+        for artifact_label, artifacts in self._manager.artifacts.items():
+            for artifact in artifacts:
+                print("checking on artifact {}".format(artifact))
+                temp_artifact_path = artifact.with_suffix(".updating")
+                print("creating {}".format(temp_artifact_path))
+                with artifact.open() as a, temp_artifact_path.open("wt") as t:
+                    for line in a:
+                        if line.startswith("# Scan.end_time"):
+                            line = line.replace(
+                                "\n",
+                                "{}\n".format(
+                                    datetime.fromtimestamp(doc["time"]).isoformat()
+                                ),
+                            )
+                            print(line)
+                        else:
+                            ...
+                        t.write(line)
+                artifact.unlink()
+                temp_artifact_path.rename(artifact)
