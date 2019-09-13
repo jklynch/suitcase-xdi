@@ -30,7 +30,7 @@ RE.subscribe(RunRouter([serializer_factory]))
 
 suitcase_meta_data = {"config-file-path": "XDI.toml"}
 
-xdi_meta_data = {"element_symbol": "A", "element_edge": "K", "mono_d_spacing": 10.0}
+xdi_meta_data = {"Element_symbol": "A", "Element_edge": "K", "Mono_d_spacing": 10.0}
 
 nx_meta_data = {
     "Source": {"name": "NSLS-II"},
