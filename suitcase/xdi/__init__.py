@@ -1,12 +1,11 @@
 # Suitcase subpackages should follow strict naming and interface conventions.
 # The public API must include Serializer and should include export if it is
 # intended to be user-facing. They should accept the parameters sketched here,
-# but may also accpet additional required or optional keyword arguments, as
+# but may also accept additional required or optional keyword arguments, as
 # needed.
 from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
-from pprint import pprint
 
 import toml
 
@@ -55,7 +54,7 @@ def export(gen, directory, file_prefix="{uid}-", **kwargs):
         the user.
 
     **kwargs : kwargs
-        Keyword arugments to be passed through to the underlying I/O library.
+        Keyword arguments to be passed through to the underlying I/O library.
 
     Returns
     -------
@@ -137,7 +136,8 @@ class Serializer(event_model.DocumentRouter):
         self._kwargs = kwargs
         self._templated_file_prefix = ""  # set when we get a 'start' document
         self._event_descriptor_uids = set()
-        self._file_template = None
+        self._xdi_file_template = None
+        self._header_line_buffer = OrderedDict()
         self.columns = None
         self.export_data_keys = None
 
@@ -219,12 +219,57 @@ class Serializer(event_model.DocumentRouter):
     #
     #   my_function(doc, fil
     def start(self, doc):
-        if self._file_template is not None:
+        if self._xdi_file_template is not None:
             raise Exception("")
 
-        self._file_template = toml.load(
-            doc["md"]["suitcase-xdi"]["config-file-path"], _dict=OrderedDict
-        )
+        if "config" in doc["md"]["suitcase-xdi"]:
+            self._xdi_file_template = toml.loads(
+                doc["md"]["suitcase-xdi"]["config"], _dict=OrderedDict
+            )
+        elif "config-file-path" in doc["md"]["suitcase-xdi"]:
+            self._xdi_file_template = toml.load(
+                doc["md"]["suitcase-xdi"]["config-file-path"], _dict=OrderedDict
+            )
+        else:
+            raise Exception(
+                "configuration must be specified as a file in md["
+                "suitcase-xdi"
+                "]["
+                "config-file-path"
+                "]"
+                "or as a string in md["
+                "suitcase-xdi"
+                "]["
+                "config"
+                "]"
+            )
+
+        """
+        Use the configuration information to build an ordered dictionary of header fields, eg
+        {
+            "XDI":                "# XDI/1.0 Bluesky"
+            "Column.1":           "# Column.1 = energy eV",
+            "Column.2":           "# Column.2 = mutrans",
+            "Column.3":           "# Column.3 = i0",
+            "Element.symbol":     None
+            "Element.edge":       None
+            # Mono.d_spacing = 10.0
+            # Facility.name = NSLS-II
+            # Beamline.name = BMM
+            # Beamline.focusing = parabolic mirror
+            # Beamline.harmonic_rejection = detuned
+            # Beamline.energy = 1000.000 eV
+            # Scan.start_time = 2019-09-18T21:49:43.080123
+            # Scan.end_time = None
+            # Scan.edge_energy = Scan_edge_energy
+        }
+        """
+
+        # initialize the header line buffer to "None" for every header line
+        self._initialize_header_line_buffer(start_doc=doc)
+
+        # extract header information from the start document
+        self._update_header_lines_from_doc(doc_name="start", doc=doc)
 
         # Fill in the file_prefix with the contents of the RunStart document.
         # As in, '{uid}' -> 'c1790369-e4b2-46c7-a294-7abfa239691a'
@@ -233,50 +278,36 @@ class Serializer(event_model.DocumentRouter):
         filename = f"{self._templated_file_prefix}.xdi"
         self._output_file = self._manager.open("stream_data", filename, "xt")
 
-        # TODO: sort the list of columns?
-        self.columns = tuple([v for k, v in self._file_template["columns"].items()])
+        self.columns = tuple([v for k, v in self._xdi_file_template["columns"].items()])
         if len(self.columns) == 0:
             raise ValueError("found no Columns")
 
         self.export_data_keys = tuple({c["data_key"] for c in self.columns})
 
-        for k, v in self._file_template["versions"].items():
-            self._output_file.write(v)
-            self._output_file.write("\n")
+        # write the header information we have now
+        # the full header will be written when the stop document arrives
+        self._write_header()
 
-        for xdi_key, xdi_value in self._file_template["columns"].items():
-            pprint(xdi_key)
-            pprint(xdi_value)
-            self._output_file.write(
-                "# {} = {}".format(xdi_key, xdi_value["column_label"].format(**doc))
-            )
-            if "units" in xdi_value:
-                self._output_file.write(" {units}\n".format(**xdi_value))
-            else:
-                self._output_file.write("\n")
+    def _write_header(self, output_file=None):
+        """Write all header information, "None" for missing information.
 
-        for xdi_key, xdi_value in self._file_template["required_headers"].items():
-            pprint(xdi_key)
-            pprint(xdi_value)
-            self._output_file.write(
-                "# {} = {}\n".format(xdi_key, xdi_value["data"].format(**doc))
-            )
+        """
+        if output_file is None:
+            output_file = self._output_file
 
-        for xdi_key, xdi_value in self._file_template["optional_headers"].items():
-            pprint(xdi_key)
-            pprint(xdi_value)
-            if xdi_key == "Scan.start_time":
-                self._output_file.write(
-                    "# {} = {}\n".format(
-                        xdi_key, datetime.fromtimestamp(doc["time"]).isoformat()
-                    )
-                )
-            elif xdi_key == "Scan.end_time":
-                self._output_file.write("# {} = \n".format(xdi_key))
-            else:
-                self._output_file.write(
-                    "# {} = {}\n".format(xdi_key, xdi_value["data"].format(**doc))
-                )
+        # the first line is a special case - only print the value, not the key
+        # TODO: simplify this special case by keeping the entire line in the header line buffer values
+        header_lines = self._header_line_buffer.copy()
+        output_file.write(header_lines.pop("XDI"))
+        output_file.write("\n")
+        for header_field, header_value in header_lines.items():
+            # self._write_xdi_row(xdi_header_field_name=header_field, xdi_field_value_template=header_value)
+            output_file.write("# {} = {}\n".format(header_field, header_value))
+
+        output_file.write("#----\n")
+        output_file.write(
+            "# {}\n".format("\t".join([c["column_label"] for c in self.columns]))
+        )
 
     def descriptor(self, doc):
         """
@@ -291,11 +322,13 @@ class Serializer(event_model.DocumentRouter):
         descriptor_data_keys = doc["data_keys"]
         if set(self.export_data_keys).issubset(descriptor_data_keys.keys()):
             self._event_descriptor_uids.add(doc["uid"])
-            self._output_file.write("#----\n")
-            header_list = [c["column_label"].format(**doc) for c in self.columns]
-            self._output_file.write("# {}\n".format("\t".join(header_list)))
+            # self._output_file.write("#----\n")
+            # header_list = [c["column_label"].format(**doc) for c in self.columns]
+            # self._output_file.write("# {}\n".format("\t".join(header_list)))
         else:
             ...
+
+        self._update_header_lines_from_doc(doc_name="descriptor", doc=doc)
 
     def event_page(self, doc):
         # There are other representations of Event data -- 'event' and
@@ -317,24 +350,111 @@ class Serializer(event_model.DocumentRouter):
             print(f"this event has no data to export")
 
     def stop(self, doc):
+        self._update_header_lines_from_doc(doc_name="stop", doc=doc)
         self._manager.close()
         for artifact_label, artifacts in self._manager.artifacts.items():
             for artifact in artifacts:
-                print("checking on artifact {}".format(artifact))
+                print("finishing artifact {}".format(artifact))
                 temp_artifact_path = artifact.with_suffix(".updating")
                 print("creating {}".format(temp_artifact_path))
                 with artifact.open() as a, temp_artifact_path.open("wt") as t:
+                    # write a fresh header
+                    self._write_header(output_file=t)
                     for line in a:
-                        if line.startswith("# Scan.end_time"):
-                            line = line.replace(
-                                "\n",
-                                "{}\n".format(
-                                    datetime.fromtimestamp(doc["time"]).isoformat()
-                                ),
-                            )
-                            print(line)
+                        if line.startswith("#"):
+                            # already wrote the header
+                            pass
                         else:
-                            ...
-                        t.write(line)
+                            # write a line of data
+                            t.write(line)
                 artifact.unlink()
                 temp_artifact_path.rename(artifact)
+
+    def _initialize_header_line_buffer(self, start_doc):
+
+        for k, v in self._xdi_file_template["versions"].items():
+            self._header_line_buffer[k] = None
+
+        for xdi_key, xdi_value in self._xdi_file_template["columns"].items():
+            try:
+                header_field_value = xdi_value["column_label"].format(**start_doc)
+                if "units" in xdi_value:
+                    self._header_line_buffer[xdi_key] = (
+                        f"{header_field_value} " + xdi_value["units"]
+                    )
+                else:
+                    self._header_line_buffer[xdi_key] = f"{header_field_value}"
+            except KeyError as ke:
+                print(ke)
+                self._header_line_buffer[xdi_key] = None
+
+        for xdi_key, xdi_value in self._xdi_file_template["required_headers"].items():
+            try:
+                self._header_line_buffer[xdi_key] = xdi_value["data"].format(
+                    **start_doc
+                )
+            except KeyError as ke:
+                print(ke)
+                self._header_line_buffer[xdi_key] = None
+
+        for xdi_key, xdi_value in self._xdi_file_template["optional_headers"].items():
+            if xdi_key == "Scan.start_time":  # and doc_name == "start":
+                header_field_value = datetime.fromtimestamp(
+                    start_doc["time"]
+                ).isoformat()
+            elif xdi_key == "Scan.end_time":  # and doc_name == "end":
+                header_field_value = None
+            else:
+                try:
+                    header_field_value = xdi_value["data"].format(**start_doc)
+                except KeyError as ke:
+                    print(ke)
+                    header_field_value = None
+            self._header_line_buffer[xdi_key] = header_field_value
+
+    def _update_header_lines_from_doc(self, doc_name, doc):
+        def get_empty_header_fields(dict_):
+            return [
+                (k_, v_)
+                for (k_, v_) in dict_.items()
+                if self._header_line_buffer[k_] is None
+            ]
+
+        for k, v in get_empty_header_fields(self._xdi_file_template["versions"]):
+            self._header_line_buffer[k] = f"{v}"
+
+        for xdi_key, xdi_value in get_empty_header_fields(
+            self._xdi_file_template["columns"]
+        ):
+            try:
+                header_field_value = xdi_value["column_label"].format(**doc)
+                if "units" in xdi_value:
+                    self._header_line_buffer[xdi_key] = (
+                        f"{header_field_value} " + xdi_value["units"]
+                    )
+                else:
+                    self._header_line_buffer[xdi_key] = f"{header_field_value}"
+            except KeyError:
+                self._header_line_buffer[xdi_key] = None
+
+        for xdi_key, xdi_value in get_empty_header_fields(
+            self._xdi_file_template["required_headers"]
+        ):
+            try:
+                self._header_line_buffer[xdi_key] = xdi_value["data"].format(**doc)
+            except KeyError:
+                self._header_line_buffer[xdi_key] = None
+
+        for xdi_key, xdi_value in get_empty_header_fields(
+            self._xdi_file_template["optional_headers"]
+        ):
+            if xdi_key == "Scan.start_time" and doc_name == "start":
+                header_field_value = datetime.fromtimestamp(doc["time"]).isoformat()
+            elif xdi_key == "Scan.end_time" and doc_name == "stop":
+                header_field_value = datetime.fromtimestamp(doc["time"]).isoformat()
+            else:
+                try:
+                    header_field_value = xdi_value["data"].format(**doc)
+                except KeyError:
+                    header_field_value = None
+            self._header_line_buffer[xdi_key] = header_field_value
